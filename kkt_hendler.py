@@ -26,6 +26,42 @@ class KktHendler:
         }
         self.redis = self._redis_connection()
         self.token = self._authorized()
+        self.template_item = {
+            "name": os.getenv('PAYMENT_SERVICE_NAME'),
+            "price": 0.00,
+            "quantity": 1,
+            "sum": 0.00,
+            "payment_method": "full_prepayment",
+            "payment_object": "service",
+            "vat":{
+                "type":"none"
+            }
+        }
+        self.template_request = {
+            "external_id": str(time.time()).replace('.',''),
+            "receipt":{
+                "client":{
+                    "email": ""
+                },
+                "company":{
+                    "email": os.getenv('EMAIL'),
+                    "inn": os.getenv('INN'),
+                    "payment_address": os.getenv('SHOP_NAME')
+                    },
+                "items":[],
+                "payments":[
+                    {
+                        "type": 1,
+                        "sum": 0.00
+                    }
+                ],
+                "total": 0.00
+                },
+                "service":{
+                    "callback_url": os.getenv('CALLBACK_URL', '')
+                },
+            "timestamp": datetime.now().strftime("%m/%d/%Y, %H:%M:%S")
+        }
 
 
     def _redis_connection(self):
@@ -47,7 +83,7 @@ class KktHendler:
             'pass': self.password
         })
         r_headers = self.headers
-        url = f'{os.getenv("TEST_URL")}getToken'
+        url = f'{os.getenv("URL")}getToken'
         if not self.redis.exists('token'):
             try:
                 response = requests.post(
@@ -70,70 +106,37 @@ class KktHendler:
         )
         return self.redis.get('token')
 
-    def sell(self):
-        data =  json.dumps({
-            "external_id": str(time.time()).replace('.',''),
-                "receipt":{
-                    "client":{
-                        "email":""
-                    },
-                    "company":{
-                        "email":"chek@romashka.ru",
-                        "inn": os.getenv('TEST_INN'),
-                        "payment_address": os.getenv('TEST_SHOP_NAME')
-                    },
-                    "items":[
-                        {
-                            "name":"Монитор Samsung C27F390FHI",
-                            "price":16459.00,
-                            "quantity":1,
-                            "sum":16459.00,
-                            "measurement_unit":"Еденица",
-                            "payment_method":"partial_payment",
-                            "payment_object":"service",
-                            "vat":{
-                                "type":"none"
-                            }
-                        }
-                    ],
-                "payments":[
-                    {
-                        "type":1,
-                        "sum":23584.0
-                    }
-                ],
-                "total":43584.0
-                },
-                "service":{
-                    "callback_url":"http://testtest"
-                },
-            "timestamp": datetime.now().strftime("%m/%d/%Y, %H:%M:%S")
-        })
+    def sell(self, data):
         r_headers = self.headers
         r_headers['Token'] = self.redis.get('token')
-        logger.debug(r_headers)
-        url = f'{os.getenv("TEST_URL")}{os.getenv("TEST_GROUP_CODE")}/sell'
+        url = f'{os.getenv("URL")}{os.getenv("GROUP_CODE")}/sell'
         response = requests.post(
             url,
-            data=data,
+            data=json.dumps(data),
             headers=r_headers
         ).json()
         if not response['error']:
             logger.debug(response)
+        else:
+            logger.error(response['error'])
 
     def check_status(self, uuid):
-        url = f'{os.getenv("TEST_URL")}{os.getenv("TEST_GROUP_CODE")}/report/{uuid}'
-        response = requests.post(
+        url = f'{os.getenv("URL")}{os.getenv("GROUP_CODE")}/report/{uuid}'
+        r_headers = self.headers
+        r_headers['Token'] = self.redis.get('token')
+        logger.debug(r_headers)
+        response = requests.get(
             url,
-            headers=self.headers
+            headers=r_headers
         ).json()
         if not response['error']:
             logger.debug(response)
+        else:
+            logger.error(response['error'])
 
 
 if __name__ == '__main__':
-    kkt_test = KktHendler(
-        os.getenv('TEST_LOGIN'),
-        os.getenv('TEST_PASS')
+    kkt = KktHendler(
+        os.getenv('LOGIN'),
+        os.getenv('PASS')
     )
-    kkt_test.sell()
